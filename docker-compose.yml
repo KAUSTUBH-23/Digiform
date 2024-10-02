@@ -1,0 +1,61 @@
+name: digiform
+
+services:
+  telegram-bot:
+    build: .
+    command: python3 telegram-bot/run.py
+    volumes:
+      - .:/code
+    restart: always
+    depends_on:
+      backend:
+        condition: service_started
+  
+    
+  backend:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "${PORT}:${PORT}"
+    command: gunicorn digiform.wsgi:application --workers 3 --bind 0.0.0.0:${PORT}
+    volumes:
+      - .:/code
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      db-migrations:
+        condition: service_completed_successfully
+    links:
+      - "db:database"
+
+  db-migrations:
+    build: .
+    command: python3 manage.py migrate
+    volumes:
+      - .:/code
+    depends_on:
+      db:
+        condition: service_healthy
+    
+
+  db:
+    image: postgres:14.12-alpine3.20
+    env_file:
+      - .env
+    ports:
+      - "${PGPORT}:${PGPORT}"
+    volumes:
+      - digiform-data:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
+      start_period: 0s
+      interval: 5s
+      timeout: 30s
+      retries: 3
+
+volumes:
+  digiform-data:
+    name: digiform-data
